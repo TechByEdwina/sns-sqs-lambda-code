@@ -1,0 +1,15 @@
+import json
+
+def lambda_handler(event, context):
+    for record in event['Records']:
+        sns_message = json.loads(record['body'])
+        message = json.loads(sns_message['Message'])
+
+        company = message.get('CompanyName', 'Unknown Company')
+
+        print({
+            "channel": "#hiring",
+            "text": f"New application for {company}"
+        })
+
+    return {"statusCode": 200}
