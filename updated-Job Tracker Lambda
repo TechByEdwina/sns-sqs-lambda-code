@@ -1,0 +1,59 @@
+import json
+import uuid
+import boto3
+import os
+from datetime import datetime
+
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table(os.environ['TABLE_NAME'])
+sns = boto3.client('sns')
+TOPIC_ARN = os.environ['SNS_TOPIC_ARN']
+
+def lambda_handler(event, context):
+    if "requestContext" in event and "http" in event["requestContext"]:
+        method = event["requestContext"]["http"]["method"]
+    else:
+        method = event.get("httpMethod", "GET")
+
+    now = datetime.utcnow().isoformat()
+
+    if method == "OPTIONS":
+        return cors_response(200, "")
+
+    if method == "POST":
+        body = json.loads(event.get("body", "{}"))
+        item = body.copy()
+        item["applicationId"] = str(uuid.uuid4())
+        item["createdAt"] = now
+        item["lastUpdated"] = now
+
+        # Save immediately — user waits only for this
+        table.put_item(Item=item)
+
+        # Fire and forget — background tasks happen independently
+        try:
+            sns.publish(
+                TopicArn=TOPIC_ARN,
+                Message=json.dumps(item)
+            )
+        except Exception as e:
+            print(f"SNS publish failed: {e}")
+
+        return cors_response(201, item)
+
+    if method == "GET":
+        response = table.scan()
+        return cors_response(200, response["Items"])
+
+    return cors_response(400, {"message": "Unsupported HTTP method"})
+
+def cors_response(status_code, body):
+    return {
+        "statusCode": status_code,
+        "headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type"
+        },
+        "body": json.dumps(body)
+    }
