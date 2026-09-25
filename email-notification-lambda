@@ -1,0 +1,39 @@
+import json
+import boto3
+import os
+
+ses = boto3.client('ses')
+
+FROM_EMAIL = os.environ['FROM_EMAIL']
+TO_EMAIL = os.environ['TO_EMAIL']
+APP_NAME = os.environ['APP_NAME']
+
+def lambda_handler(event, context):
+    for record in event['Records']:
+        sns_message = json.loads(record['body'])
+        message = json.loads(sns_message['Message'])
+
+        company = message.get('CompanyName', 'Unknown Company')
+        job_title = message.get('jobTitle', 'Unknown Role')
+        status = message.get('applicationStatus', 'Applied')
+
+        subject = f"{APP_NAME}: Application Confirmed"
+        body = (
+            f"Your application has been recorded.\n\n"
+            f"Company: {company}\n"
+            f"Job Title: {job_title}\n"
+            f"Status: {status}\n\n"
+            f"This is an automated confirmation from {APP_NAME}."
+        )
+
+        ses.send_email(
+            Source=FROM_EMAIL,
+            Destination={'ToAddresses': [TO_EMAIL]},
+            Message={
+                'Subject': {'Data': subject},
+                'Body': {'Text': {'Data': body}}
+            }
+        )
+        print(f"Email sent for {company}")
+
+    return {"statusCode": 200}
